@@ -1,0 +1,15 @@
+{
+  "name": "infinite_arithmetic_using_array",
+  "version": "0.0.1",
+  "description": "Implementation of an Infinite Range Number using Arrays",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "Infinite",
+    "Arithmetic"
+  ],
+  "author": "Sudhanshu",
+  "license": "ISC"
+}
