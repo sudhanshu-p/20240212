@@ -167,7 +167,8 @@ class Database {
             encoding: 'utf8',
             flag: 'r'
         })
-        console.log(`File content: ${data}`)
+
+        return data
     }
 
     /**
@@ -176,8 +177,61 @@ class Database {
      * @param {String} oldTableName Name of table
      * @param {String} newTableName Name of table
      */
-    updateTable(dbName, tableName) {
+    updateTable(dbName, oldTableName, newTableName) {
+        if (!(this.__databaseExists(dbName))) {
+            throw new Error("The database does not exist!")
+        }
 
+        if (!(this.__tableExists(dbName, oldTableName))) {
+            throw new Error("Table to be renamed does not exist!")
+        }
+
+        if (this.__tableExists(dbName, newTableName)) {
+            throw new Error("New table name already exists!")
+        }
+
+        this.fs.renameSync(`${this.dataPath}/${dbName}/${oldTableName}.txt`,
+            `${this.dataPath}/${dbName}/${newTableName}.txt`)
+        return true
+    }
+
+    /** Deletes the table given as parameter if it is empty
+     * @param {String} dbName - Name of the database
+     * @param {String} tableName - Name of the table to be deleted
+     */
+    deleteTable(dbName, tableName) {
+        if (!(this.__databaseExists(dbName))) {
+            throw new Error("The database does not exist!")
+        }
+
+        if (!(this.__tableExists(dbName, tableName))) {
+            throw new Error("Table to be renamed does not exist!")
+        }
+
+        // If the file is empty, safe to delete it
+        if (this.readTable(dbName, tableName) === "") {
+            this.fs.rmSync(`${this.dataPath}/${dbName}/${tableName}.txt`)
+        }
+        else {
+            throw new Error("Table to be deleted is not empty!")
+        }
+    }
+
+    /** Deletes the table given as parameter no matter if it's empty or not
+     * @param {String} dbName - Name of the database
+     * @param {String} tableName - Name of the table to be deleted
+     */
+    forceDeleteTable(dbName, tableName) {
+        if (!(this.__databaseExists(dbName))) {
+            throw new Error("The database does not exist!")
+        }
+
+        if (!(this.__tableExists(dbName, tableName))) {
+            throw new Error("Table to be renamed does not exist!")
+        }
+
+        this.fs.rmSync(`${this.dataPath}/${dbName}/${tableName}.txt`)
+        return true
     }
 }
 
@@ -212,7 +266,21 @@ function testingFunction() {
 
         // Creating a table
         // db.createTable("testing-database", "testing-table")
-        db.readTable("testing-database", "testing-table")
+
+        // Reading a table
+        // const content = db.readTable("testing-database", "testing-table")
+        // console.log(`File content: ${content}`)
+
+        // Updating a table
+        // db.updateTable("testing-database",
+        //     "testing-table",
+        //     "new-renamed-table")
+
+        // Deleting a table
+        // db.deleteTable("testing-database", "empty-table")
+        // db.forceDeleteTable("testing-database", "new-renamed-table")
+
+        
     } catch (error) {
         console.error('Error:', error.message)
     }
