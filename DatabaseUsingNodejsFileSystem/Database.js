@@ -1,163 +1,197 @@
-const { table } = require('console');
+/*
+Problem Definition - Create a DBMS to perform CRUD operations on
+- A folder (Database)
+- A file (Collection)
+- An entry within that file (Record)
+*/
 
-/**
- * The class to perform CRUD operations on the database
- * @author Sudhanshu
+/** The class to perform these crud operations
+ * 
  */
 class Database {
+
+    /** Root path of the data
+     * @private
+     */
+    dataPath
+
+    /** The database that is currently being accessed.
+     * @private
+     */
+    currentDatabase
+
+    /** Having the fs internal, so as not to expose the file system
+     * @private
+     */
+    fs
+
     constructor(dataPath) {
+        this.fs = require('fs')
+        if (!this.fs.existsSync(dataPath)) {
+            throw new Error("Invalid root folder.")
+        }
         this.dataPath = dataPath
-        this.fs = require('fs'); // Accessing Node.js file system
     }
 
-    /**
-     * Internal function that checks if a database exists or not
-     * @param {String} dbName The name of the Database
-     * @returns {Boolean} true if database exists, false otherwise
+    /** Internal function that alidates whether a database name.
+     * @param {String} databaseName Name of the datbase
      */
-    __databaseExists(dbName) {
-        return this.fs.existsSync(`${this.dataPath}/${dbName}`)
-    }
-
-    /**
-    * Create a new database
-    * @param {String} dbName - Name of database to be read
-    * @throws {Error} When database already exists 
-    */
-    createDatabase(dbName) {
-        const path = `${this.dataPath}/${dbName}`
-        if (!this.fs.existsSync(path)) {
-            this.fs.mkdirSync(path)
-            return true
-        }
-        throw new Error('Database already exists')
-    }
-
-    /**
-    * List all databases
-    * @returns {Array} List of all databases
-    */
-    listDatabases() {
-        const folders = this.fs.readdirSync(this.dataPath)
-
-        // Filter is to only return folders
-        return folders.filter(
-            folder => this.fs.statSync(`${this.dataPath}/${folder}`).isDirectory()
-        )
-    }
-
-    /**
-     * Update / Rename a database 
-     * @param {String} oldName The initial name of database to be renamed
-     * @param {String} newName The new name of the database
-     */
-    renameDatabase(oldName, newName) {
-        // Check if old database doesn't exists
-        if (!this.__databaseExists(oldName)) {
-            throw new Error('Database not found')
+    __verifyDatabaseName(databaseName) {
+        if(typeof databaseName !== "string") {
+            throw new Error("Database names must be strings")
         }
 
-        // Check if new name already exists
-        if (this.__databaseExists(newName)) {
-            throw new Error('Target database already exists')
+        if(databaseName.length <= 5) {
+            throw new Error("Atleast 5 charachters in a database name")
         }
 
-        this.fs.renameSync(`${this.dataPath}/${oldName}`, `${this.dataPath}/${newName}`)
+        if(typeof (+(databaseName.charAt(0))) === "number") {
+            throw new Error("First charachter must not be a number")
+        }
         return true
     }
 
+    /** Checks whether a database by the name given as param exists or not. 
+     * @param {String} databaseName
+    */
+    __databaseExists(databaseName) {
+        return this.fs.existsSync(`${this.dataPath}/${databaseName}`)
+    }
 
-    /**
-     * Deletes a database if it is empty
-     * @param {String} dbName Name of database to be deleted
-     * @throws {Error} When the database doesn't exist, or when it is not empty
-     */
-    deleteDatabase(dbName) {
-        if (!this.__databaseExists(dbName)) {
-            throw new Error('Database not found')
+
+    /** Takes in a database name to access that database 
+     * @param {String} databaseName
+     * TODO: Add a password mechanism.
+    */
+    connect(databaseName) {
+        if (!this.__databaseExists(databaseName)) {
+            throw new Error("Invalid Database.")
         }
 
-        // Ensure folder is empty before deletion
-        const files = this.fs.readdirSync(`${this.dataPath}/${dbName}`)
+        this.currentDatabase = `${this.dataPath}/${databaseName}`
+        console.log("Connected to database " + databaseName)
+    }
+
+    /** Create a new folder (Database) of the given name
+     * @param {String} databaseName - Name of database to be created
+     * @throws {Error} When a database with the same name already exists
+     */
+    createDatabase(databaseName) {
+        this.__verifyDatabaseName(databaseName)
+        if (this.__databaseExists(databaseName)) {
+            throw new Error("Database with same name already exists")
+        }
+
+        const path = `${this.dataPath}/${databaseName}`
+        this.fs.mkdirSync(path)
+        console.log("Created Database " + databaseName)
+        return this.connect(databaseName)
+    }
+
+    /** List(Read) all the files of the current database 
+     * @returns {Array<String>} List of all collections in this database
+    */
+    readDatabase() {
+        if (!this.__databaseExists(this.currentDatabase)) {
+            throw new Error("Cannot read current database")
+        }
+
+        const folders = this.fs.readdirSync(this.currentDatabase)
+        return folders
+    }
+
+    /** Rename(Update) the current database to the parameter given 
+     * @param {String} newDatabaseName - Target name of the database
+    */
+    renameDatabase(newDatabaseName) {
+        if (!this.__databaseExists(this.currentDatabase)) {
+            throw new Error("Cannot read current database")
+        }
+        this.__verifyDatabaseName(newDatabaseName)
+        if (this.__databaseExists(newDatabaseName)) {
+            throw new Error("Database with same name already exists")
+        }
+
+        this.fs.renameSync(`${this.currentDatabase}`, `${this.dataPath}/${newDatabaseName}`)
+        this.currentDatabase = `${this.dataPath}/${newDatabaseName}`
+    }
+
+    /** Safe delete the current database (Only delete if empty) */
+    deleteDatabase() {
+        if (!this.__databaseExists(this.currentDatabase)) {
+            throw new Error("Cannot read current database")
+        }
+
+        const files = this.fs.readdirSync(`${this.currentDatabase}`)
         if (files.length > 0) {
             throw new Error('Database is not empty')
         }
 
-        this.fs.rmdirSync(`${this.dataPath}/${dbName}`)
+        this.fs.rmdirSync(`${this.currentDatabase}`)
         return true
     }
 
-    /**
-     * Deletes a non-empty database also
-     * @param {String} dbName Name of database to be deleted
-     * @throws {Error} When the database doesn't exist
-     */
-    forceDeleteDatabase(dbName) {
-        if (!this.__databaseExists(dbName)) {
-            throw new Error('Database not found')
+    /** Forcefully deletes the current database (RISKY!) */
+    forceDeleteDatabase() {
+        if (!this.__databaseExists(this.currentDatabase)) {
+            throw new Error("Cannot read current database")
         }
 
-        this.fs.rmdirSync(`${this.dataPath}/${dbName}`)
+        this.fs.rmdirSync(`${this.currentDatabase}`)
         return true
     }
 
+    // Now, CRUD on the collections
 
-    /**
-     * Checks if the table exists or not
-     * @param {String} dbName Name of database
-     * @param {String} tableName Name of Table
-     * @returns {Boolean}
-     */
-    __tableExists(dbName, tableName) {
-        const path = `${this.dataPath}/${dbName}/${tableName}.txt`
-
-        if (!this.fs.existsSync(path)) {
-            return false
-        }
-        return true
-    }
-
-    /**
-    * Create a new Table in a database
-    * @param {String} dbName - Name of database in which table is to be created
-    * @param {String} tableName - Name of table to be created
-    * @throws {Error} When database doesn't exists, or when table exists
+    /** Internal function to check if a collection by the current name exists
+     * @param {String} collectionName - Name of the collection
+     * @returns {Boolean} Does the collection exist in current DB?
     */
-    createTable(dbName, tableName) {
+    __collectionExists(collectionName) {
+        const path = `${this.currentDatabase}/${collectionName}`
+        return this.fs.existsSync(path)
+    }
 
-        if (!this.__databaseExists(dbName)) {
-            throw new Error("Database doesn't exists")
+
+    /** Internal function to check if a collection name is valid 
+     * @param {String} collectionName
+    */
+    __verifyCollectionName(collectionName) {
+        if(typeof collectionName !== "string") {
+            throw new Error("Collection names must be strings")
         }
 
-
-        if (this.__tableExists(dbName, table)) {
-            throw new Error("Table already exists")
+        if(collectionName.length <= 3) {
+            throw new Error("Atleast 3 charachters in a collection name")
         }
-
-        const path = `${this.dataPath}/${dbName}/${tableName}.txt`
-        this.fs.writeFileSync(`${path}`, '')
 
         return true
     }
 
-    /**
-     * Reads the entire table
-     * @param {String} dbName Name of database in which table is there
-     * @param {String} tableName Name of table to be read
-     * @throws {Error} When the Database doesn't exist or when the table 
-     * doesn'texist
-     */
-    readTable(dbName, tableName) {
-
-        if (!this.__databaseExists(dbName)) {
-            throw new Error("Invalid Database")
+    /** Creates a new collection in the current database 
+     * @param {String} collectionName - Name of the new collection
+    */
+    createCollection(collectionName) {
+        this.__verifyCollectionName(collectionName)
+        if (this.__collectionExists(collectionName)) {
+            throw new Error("Collection by the same name already exists")
         }
 
-        if (!this.__tableExists(dbName, tableName)) {
-            throw new Error("Table to be read does not exist")
+        const path = `${this.currentDatabase}/${tableName}.json`
+        this.fs.writeFileSync(`${path}`, '')
+    }
+
+    /** Reads the entire content of a collection 
+     * @param {String} collectionName - Name of collection to be read
+    */
+    readCollection(collectionName) {
+        this.__verifyCollectionName(collectionName)
+
+        if (!this.__collectionExists(collectionName)) {
+            throw new Error("Collection to be read doesn't exist")
         }
 
-        const path = `${this.dataPath}/${dbName}/${tableName}.txt`
+        const path = `${this.currentDatabase}/${collectionName}.json`
         // this.fs.readFile(path, 'utf8', (err, data) => {
         //     if (err) throw err;
         //     console.log('File content:', JSON.parse(data));
@@ -171,67 +205,57 @@ class Database {
         return data
     }
 
-    /**
-     * 
-     * @param {String} dbName Name of database
-     * @param {String} oldTableName Name of table
-     * @param {String} newTableName Name of table
+    /** Renames a table to the given parameter
+     * @param {String} oldCollectionName - Old name of the collection
+     * @param {String} newCollectionName - New name of the collection
      */
-    updateTable(dbName, oldTableName, newTableName) {
-        if (!(this.__databaseExists(dbName))) {
-            throw new Error("The database does not exist!")
+    renameCollection(oldCollectionName, newCollectionName) {
+        this.__verifyCollectionName(oldCollectionName)
+        this.__verifyCollectionName(newCollectionName)
+
+        if (!this.__collectionExists(oldCollectionName)) {
+            throw new Error("Collection to be renamed doesn't exist")
         }
 
-        if (!(this.__tableExists(dbName, oldTableName))) {
-            throw new Error("Table to be renamed does not exist!")
+        if (this.__collectionExists(newCollectionName)) {
+            throw new Error("A collection by the new name already exists")
         }
 
-        if (this.__tableExists(dbName, newTableName)) {
-            throw new Error("New table name already exists!")
-        }
+        this.fs.renameSync(`${this.currentDatabase}/${oldCollectionName}.json`,
+            `${this.currentDatabase}/${newCollectionName}.json`)
 
-        this.fs.renameSync(`${this.dataPath}/${dbName}/${oldTableName}.txt`,
-            `${this.dataPath}/${dbName}/${newTableName}.txt`)
         return true
     }
 
-    /** Deletes the table given as parameter if it is empty
-     * @param {String} dbName - Name of the database
-     * @param {String} tableName - Name of the table to be deleted
+    /** Safe Deletes the collection given as a parameter
+     * @param {String} collectionName
      */
-    deleteTable(dbName, tableName) {
-        if (!(this.__databaseExists(dbName))) {
-            throw new Error("The database does not exist!")
+    deleteCollection(collectionName) {
+        this.__verifyCollectionName(collectionName)
+
+        if (!this.__collectionExists(collectionName)) {
+            throw new Error("Collection to be deleted doesn't exist")
         }
 
-        if (!(this.__tableExists(dbName, tableName))) {
-            throw new Error("Table to be renamed does not exist!")
-        }
-
-        // If the file is empty, safe to delete it
-        if (this.readTable(dbName, tableName) === "") {
-            this.fs.rmSync(`${this.dataPath}/${dbName}/${tableName}.txt`)
+        // If the file is empty, delete it.
+        if (this.readCollection(collectionName) === "") {
+            this.fs.rmSync(`${this.currentDatabase}/${collectionName}.json`)
         }
         else {
-            throw new Error("Table to be deleted is not empty!")
+            throw new Error("Collection to be deleted is not empty!")
         }
     }
 
-    /** Deletes the table given as parameter no matter if it's empty or not
-     * @param {String} dbName - Name of the database
-     * @param {String} tableName - Name of the table to be deleted
+    /** Forcefully deletes the collection given as parameter
+     * @param {String} collectionName
      */
-    forceDeleteTable(dbName, tableName) {
-        if (!(this.__databaseExists(dbName))) {
-            throw new Error("The database does not exist!")
-        }
+    forceDeleteCollection(collectionName) {
+        this.__verifyCollectionName(collectionName)
 
-        if (!(this.__tableExists(dbName, tableName))) {
-            throw new Error("Table to be renamed does not exist!")
+        if (!this.__collectionExists(collectionName)) {
+            throw new Error("Collection to be deleted doesn't exist")
         }
-
-        this.fs.rmSync(`${this.dataPath}/${dbName}/${tableName}.txt`)
-        return true
+        this.fs.rmSync(`${this.currentDatabase}/${collectionName}.json`)
     }
 }
 
@@ -264,23 +288,24 @@ function testingFunction() {
         //     db.deleteDatabase(existingDatabases[i])
         // }
 
-        // Creating a table
-        // db.createTable("testing-database", "testing-table")
+        // db.connect("testing-database")
 
-        // Reading a table
-        // const content = db.readTable("testing-database", "testing-table")
+        // Creating a Collection
+        // db.createCollection("testing-Collection")
+
+        // Reading a Collection
+        // const content = db.readCollection("testing-Collection")
         // console.log(`File content: ${content}`)
 
-        // Updating a table
-        // db.updateTable("testing-database",
-        //     "testing-table",
-        //     "new-renamed-table")
+        // Updating a Collection
+        // db.renameCollection( "testing-Collection",
+        //     "new-renamed-Collection")
 
-        // Deleting a table
-        // db.deleteTable("testing-database", "empty-table")
-        // db.forceDeleteTable("testing-database", "new-renamed-table")
+        // Deleting a Collection
+        // db.deleteCollection("empty-Collection")
+        // db.forceDeleteCollection("testing-database", "new-renamed-Collection")
 
-        
+
     } catch (error) {
         console.error('Error:', error.message)
     }
