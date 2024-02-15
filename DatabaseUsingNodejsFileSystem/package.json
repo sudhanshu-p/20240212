@@ -1,0 +1,17 @@
+{
+  "name": "sudhanshu_db",
+  "version": "0.0.1",
+  "description": "An unsecured Database Management System created using Nodejs Filesystem",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js"
+  },
+  "keywords": [
+    "file",
+    "system",
+    "database"
+  ],
+  "author": "Sudhanshu P",
+  "license": "ISC"
+}
