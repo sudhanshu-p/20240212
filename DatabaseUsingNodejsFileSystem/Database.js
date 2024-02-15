@@ -1,18 +1,16 @@
-/*
-Problem Definition - Create a DBMS to perform CRUD operations on
+/* Problem Definition - Create a DBMS to perform CRUD operations on
 - A folder (Database)
 - A file (Collection)
 - An entry within that file (Record)
+Additional - Implement a Schema and Schema verification algorithm.
 */
 
-/** The class to perform these crud operations
- * 
+/** The class to perform the crud operations
  */
 class Database {
-
     /** Root path of the data
-     * @private
-     */
+    * @private
+    */
     dataPath
 
     /** The database that is currently being accessed.
@@ -33,29 +31,191 @@ class Database {
         this.dataPath = dataPath
     }
 
-    /** Internal function that alidates whether a database name.
+    // INTERNAL (PRIVATE) FUNCTIONS
+
+    /** Internal function that validates a database's name.
      * @param {String} databaseName Name of the datbase
      */
     __verifyDatabaseName(databaseName) {
-        if(typeof databaseName !== "string") {
-            throw new Error("Database names must be strings")
-        }
-
-        if(databaseName.length <= 5) {
-            throw new Error("Atleast 5 charachters in a database name")
-        }
-
-        if(typeof (+(databaseName.charAt(0))) === "number") {
-            throw new Error("First charachter must not be a number")
-        }
-        return true
+        // TODO: Add Regex here
+        const regex = /^[a-zA-Z][a-zA-Z0-9_-]*$/
+        return databaseName.length > 5 && regex.test(databaseName)
     }
 
-    /** Checks whether a database by the name given as param exists or not. 
+    /** Internal function that checks if a database by the given name exists. 
      * @param {String} databaseName
     */
     __databaseExists(databaseName) {
         return this.fs.existsSync(`${this.dataPath}/${databaseName}`)
+    }
+
+    /** Internal function that validates a collection's name. 
+     * @param {String} collectionName
+    */
+    __verifyCollectionName(collectionName) {
+        if (collectionName.includes('config')) {
+            throw new Error("Cannot manually create config files.")
+        }
+
+        // Can only start with a alphabet, can only contain alphabests, number,
+        // - and _ symbols.
+        const regex = /^[a-zA-Z][a-zA-Z0-9_-]*$/
+        return collectionName.length > 5 && regex.test(collectionName)
+    }
+
+    /** Internal function that check if a collection by the current name exists
+    * @param {String} collectionName - Name of the collection
+    * @returns {Boolean} Does the collection exist in current DB?
+    */
+    __collectionExists(collectionName) {
+        const path = `${this.currentDatabase}/${collectionName}.json`
+        return this.fs.existsSync(path)
+    }
+
+    /** Internal function that valdiates the schema given
+ * @param {Object} schema The user designed schema
+ * @returns {Boolean|String} true if schema is valid, else the errors.
+ */
+    __validateSchema(schema) {
+        // Variable to keep track of the primary key found or not
+        let primaryKeyExists = false
+
+        // These are the acceptable types for a prop in the schema
+        const validTypes = ['string', 'number', 'boolean', 'object']
+
+        // These are the must have declarations for every prop in any Schema
+        const requiredProperties = ['type']
+
+        // Check if schema is an object or not
+        if (typeof schema !== 'object' || Array.isArray(schema)) {
+            return 'Schema must be an object.'
+        }
+
+        // Check if at least one property is defined
+        if (Object.keys(schema).length === 0) {
+            return 'Schema must have at least one property.'
+        }
+
+        for (const [propertyName, property] of Object.entries(schema)) {
+            if (typeof property !== 'object' || Array.isArray(property)) {
+                return 'Each property must be an object.'
+            }
+
+            // For every property that is required, check if it is actually there
+            for (const index in requiredProperties) {
+                // If it does not exist in the current property's details
+                if (!property[requiredProperties[index]]) {
+                    return `Each property should have ${requiredProperties[index]}`
+                }
+            }
+
+            // Checking for the type being in allowed list.
+            if (!validTypes.includes(property.type)) {
+                return `Invalid type for ${propertyName}`
+            }
+
+            // If this property is specified as the primary one,
+            if (property.primary) {
+                // If there is a primary key already specified
+                if (primaryKeyExists) {
+                    return `Cannot have more tha 1 primary key`
+                }
+                primaryKeyExists = true
+            }
+
+        }
+
+        // If the primary key is still not found
+        if (!primaryKeyExists) return `Schema should have 1 primary key`
+
+        // The given schema has been validated.
+        return true
+    }
+
+    /** Internal function that validates an object against given schema 
+     * @param {Object} schemaToValidateAgainst - Validated Schema to check against
+     * @param {Object} objectToBeValidated - The object that is to be validated
+     */
+    __validateObject(schemaToValidateAgainst, objectToBeValidated) {
+
+        // Check if the object given is an object
+        if (typeof objectToBeValidated !== "object"
+            || Array.isArray(objectToBeValidated)) {
+            return `Data must be an object`
+        }
+
+        // Check if at least one property is defined
+        if (Object.keys(objectToBeValidated).length === 0) {
+            return 'Object must have at least one property.'
+        }
+
+        // Get the primary key of the schema
+        const primaryKey = Object.keys(schemaToValidateAgainst).filter((prop) =>
+            schemaToValidateAgainst[prop].primary
+        )
+
+        // Check if Object has primary key
+        if (!objectToBeValidated.hasOwnProperty(primaryKey)) {
+            return `Object must have the ${primaryKey} field`
+        }
+
+        // TODO: Add a check to make sure the primary key is unique.0
+
+        // Looping and checking over each data.
+        for (const [propName, propValue] of Object.entries(objectToBeValidated)) {
+
+            // Check if the property is defined in schema
+            if (!schemaToValidateAgainst.hasOwnProperty(propName)) {
+                return `Invalid property ${propName}`
+            }
+
+            // Get the description of this property from schema
+            const property = schemaToValidateAgainst[propName]
+
+            // Validate type
+            if (typeof propValue !== property.type) {
+                return `Type mismatch for ${propName}. Expected ${property.type}`
+            }
+        }
+
+        return true
+    }
+
+    /** Internal function that takes in Schema, and returns it's primary key
+     * @param {object} schema
+     * @returns {String} Primary key
+     */
+    __getPrimaryKey(schema) {
+        const primaryKey = Object.keys(schema).filter((prop) =>
+            schema[prop].primary
+        )
+        return primaryKey
+    }
+
+    /** Internal function that returns the schema for a particular collection
+     * @param {String} collectionName - Name of collection
+     * @returns {object} The schema
+     */
+    __getSchema(collectionName) {
+        let schema
+        // Fetch and parse the schema.
+        try {
+            schema = JSON.parse(
+                this.fs.readFileSync(
+                    `${this.currentDatabase}/${collectionName}-config.json`,
+                    {
+                        encoding: 'utf8',
+                        flag: 'r'
+                    }
+                )
+            )
+        }
+        // Meaning the schema file doesn't exist
+        catch {
+            throw new Error("No Schema found.")
+        }
+
+        return schema
     }
 
 
@@ -72,6 +232,8 @@ class Database {
         console.log("Connected to database " + databaseName)
     }
 
+    // DATABASE CRUD OPERATIONS
+
     /** Create a new folder (Database) of the given name
      * @param {String} databaseName - Name of database to be created
      * @throws {Error} When a database with the same name already exists
@@ -85,14 +247,15 @@ class Database {
         const path = `${this.dataPath}/${databaseName}`
         this.fs.mkdirSync(path)
         console.log("Created Database " + databaseName)
-        return this.connect(databaseName)
+        this.connect(databaseName)
     }
 
     /** List(Read) all the files of the current database 
      * @returns {Array<String>} List of all collections in this database
     */
     readDatabase() {
-        if (!this.__databaseExists(this.currentDatabase)) {
+        console.log(this.currentDatabase)
+        if (!this.currentDatabase) {
             throw new Error("Cannot read current database")
         }
 
@@ -100,11 +263,11 @@ class Database {
         return folders
     }
 
-    /** Rename(Update) the current database to the parameter given 
+    /** Rename (Update) the current database to the parameter given 
      * @param {String} newDatabaseName - Target name of the database
     */
     renameDatabase(newDatabaseName) {
-        if (!this.__databaseExists(this.currentDatabase)) {
+        if (!this.currentDatabase) {
             throw new Error("Cannot read current database")
         }
         this.__verifyDatabaseName(newDatabaseName)
@@ -118,7 +281,7 @@ class Database {
 
     /** Safe delete the current database (Only delete if empty) */
     deleteDatabase() {
-        if (!this.__databaseExists(this.currentDatabase)) {
+        if (!this.currentDatabase) {
             throw new Error("Cannot read current database")
         }
 
@@ -128,45 +291,21 @@ class Database {
         }
 
         this.fs.rmdirSync(`${this.currentDatabase}`)
+        this.currentDatabase = null
         return true
     }
 
     /** Forcefully deletes the current database (RISKY!) */
     forceDeleteDatabase() {
-        if (!this.__databaseExists(this.currentDatabase)) {
+        if (!this.currentDatabase) {
             throw new Error("Cannot read current database")
         }
 
-        this.fs.rmdirSync(`${this.currentDatabase}`)
+        this.fs.rmSync(`${this.currentDatabase}`, { recursive: true })
         return true
     }
 
-    // Now, CRUD on the collections
-
-    /** Internal function to check if a collection by the current name exists
-     * @param {String} collectionName - Name of the collection
-     * @returns {Boolean} Does the collection exist in current DB?
-    */
-    __collectionExists(collectionName) {
-        const path = `${this.currentDatabase}/${collectionName}`
-        return this.fs.existsSync(path)
-    }
-
-
-    /** Internal function to check if a collection name is valid 
-     * @param {String} collectionName
-    */
-    __verifyCollectionName(collectionName) {
-        if(typeof collectionName !== "string") {
-            throw new Error("Collection names must be strings")
-        }
-
-        if(collectionName.length <= 3) {
-            throw new Error("Atleast 3 charachters in a collection name")
-        }
-
-        return true
-    }
+    // COLLECTION CRUD OPERATIONS
 
     /** Creates a new collection in the current database 
      * @param {String} collectionName - Name of the new collection
@@ -177,7 +316,7 @@ class Database {
             throw new Error("Collection by the same name already exists")
         }
 
-        const path = `${this.currentDatabase}/${tableName}.json`
+        const path = `${this.currentDatabase}/${collectionName}.json`
         this.fs.writeFileSync(`${path}`, '')
     }
 
@@ -193,8 +332,8 @@ class Database {
 
         const path = `${this.currentDatabase}/${collectionName}.json`
         // this.fs.readFile(path, 'utf8', (err, data) => {
-        //     if (err) throw err;
-        //     console.log('File content:', JSON.parse(data));
+        //     if (err) throw err
+        //     console.log('File content:', JSON.parse(data))
         // })
 
         const data = this.fs.readFileSync(path, {
@@ -210,7 +349,6 @@ class Database {
      * @param {String} newCollectionName - New name of the collection
      */
     renameCollection(oldCollectionName, newCollectionName) {
-        this.__verifyCollectionName(oldCollectionName)
         this.__verifyCollectionName(newCollectionName)
 
         if (!this.__collectionExists(oldCollectionName)) {
@@ -251,64 +389,293 @@ class Database {
      */
     forceDeleteCollection(collectionName) {
         this.__verifyCollectionName(collectionName)
-
         if (!this.__collectionExists(collectionName)) {
             throw new Error("Collection to be deleted doesn't exist")
         }
         this.fs.rmSync(`${this.currentDatabase}/${collectionName}.json`)
     }
+
+    /** Sets the schema for a collection.
+     * @param {String} collectionName Name of collection 
+     * @param {object} schema The schema object.
+     */
+    setSchema(collectionName, schema) {
+        const schemaResult = this.__validateSchema(schema)
+        if (schemaResult !== true) {
+            throw new Error(schemaResult)
+        }
+
+        // Validate the collectionName
+        this.__collectionExists(collectionName)
+
+        // We don't need to check if the schema already exists, because 
+        // in that case, it will be overwritten, which is expected behaviour
+        // of setSchema
+
+        // Create a new collectionName-config.json that stores the schema
+        this.fs.writeFileSync(
+            `${this.currentDatabase}/${collectionName}-config.json`,
+            JSON.stringify(schema))
+    }
+
+    // RECORD CRUD OPERATIONS
+
+    /** Creates a new record in the given collection
+     * @param {String} collectionName - Name of collection
+     * @param {object} objectToBeAdded
+     */
+    createRecord(collectionName, objectToBeAdded) {
+        // Check if the collection exists
+        this.__collectionExists(collectionName)
+
+        // Check if the schema for that collection exists
+        if (!this.fs.existsSync(
+            `${this.currentDatabase}/${collectionName}-config.json`)) {
+            throw new Error("Must first define schema for this collection")
+        }
+
+        // Fetch and parse the schema.
+        const schema = this.__getSchema(collectionName)
+
+        // Because conditional operators also take strings as truthy values
+        if (this.__validateObject(schema, objectToBeAdded) !== true) {
+            throw new Error(this.__validateObject(schema, objectToBeAdded))
+        }
+
+        const pastData = this.readCollection(collectionName)
+
+        // If there is no pastData, write this object to it.
+        if (!pastData) {
+            // We are storing data as an array of JSON objects
+            const newArray = []
+            newArray.push(objectToBeAdded)
+            this.fs.writeFileSync(
+                `${this.currentDatabase}/${collectionName}.json`,
+                JSON.stringify(newArray))
+            return true
+        }
+
+        try {
+            const jsonData = JSON.parse(pastData)
+
+            // Just an edge case, never actually happens.
+            if (!Array.isArray(jsonData)) {
+                const newArray = [jsonData]
+                newArray.push(objectToBeAdded)
+                this.fs.writeFileSync(
+                    `${this.currentDatabase}/${collectionName}.json`,
+                    JSON.stringify(newArray)
+                )
+                return true
+            }
+
+            const primaryKey = this.__getPrimaryKey(schema)
+
+            // If the primary key already exists in the array
+            if (jsonData.find((record) =>
+                record[primaryKey] === objectToBeAdded[primaryKey]
+            ) !== undefined) {
+                throw new Error(`Record with same primary key already exists`)
+            }
+
+            jsonData.push(objectToBeAdded)
+            this.fs.writeFileSync(
+                `${this.currentDatabase}/${collectionName}.json`,
+                JSON.stringify(jsonData)
+            )
+        }
+        catch (err) {
+            console.log(err)
+        }
+    }
+
+    /** Read the record with same primaryAttribute as the param
+     * @param {String} collectionName Name of the collection to be read
+     * @param {any} primaryAttribute Value of primary key of data to be read
+     * @return {object|String} The record to be found, or an error message
+     */
+    readRecord(collectionName, primaryAttribute) {
+        // Reading the collection data
+        // This also makes all the verifications on the collection
+        const allData = JSON.parse(this.readCollection(collectionName))
+
+        const schema = this.__getSchema(collectionName)
+
+        // Fetch the primary key
+        const primaryKey = this.__getPrimaryKey(schema)
+
+        const result = allData.find((record) =>
+            record[primaryKey] === primaryAttribute)
+
+        if (result === undefined) {
+            return `Record with this primary key doesn't exists`
+        }
+
+        return result
+    }
+
+    /** Updates a record based on it's primary key
+     * @param {String} collectionName - Name of the collecion
+     * @param {any} primaryAttribute - Value of primary key to search for
+     * @param {object} newObjectData - New data of the object
+     */
+    updateRecord(collectionName, primaryAttribute, newObjectData) {
+        // Reading the collection data
+        // This also makes all the verifications on the collection
+        const allData = JSON.parse(this.readCollection(collectionName))
+
+        // Getting the schema and primary key
+        const schema = this.__getSchema(collectionName)
+        const primaryKey = this.__getPrimaryKey(schema)
+
+        // If the new data is trying to change primary key, reject it.
+        if (primaryKey in newObjectData) {
+            return `Cannot change primary key`
+        }
+
+        const result = allData.findIndex(
+            (object) => object[primaryKey] === primaryAttribute)
+
+        if (result === -1) {
+            return `404: Data Not found`
+        }
+
+        // Update the data
+        allData[result] = { ...allData[result], ...newObjectData }
+
+        // Make sure the new data is Schema compliant
+        const objectValidated = this.__validateObject(schema, allData[result])
+        if (objectValidated === true) {
+            // Write the data   
+            this.fs.writeFileSync(
+                `${this.currentDatabase}/${collectionName}.json`,
+                JSON.stringify(allData)
+            )
+            return `Record has been updated`
+        }
+        return objectValidated
+    }
+
+    /** Deletes an object with given primary attribute
+     * @param collectionName Name of the collection
+     * @param primaryAttribute
+     */
+    deleteRecord(collectionName, primaryAttribute) {
+        // Reading the collection data
+        // This also makes all the verifications on the collection
+        const allData = JSON.parse(this.readCollection(collectionName))
+
+        // Get the schema and primary key
+        const schema = this.__getSchema(collectionName)
+        const primaryKey = this.__getPrimaryKey(schema)
+
+        const result = allData.findIndex(
+            (object) => object[primaryKey] === primaryAttribute)
+
+        if (result === -1) {
+            return `404: Data Not found`
+        }
+
+        allData.splice(result, 1)
+
+        // Write back the data after being deleted
+        this.fs.writeFileSync(
+            `${this.currentDatabase}/${collectionName}.json`,
+            JSON.stringify(allData)
+        )
+
+        return `Deletion successful`
+    }
 }
 
-
 function testingFunction() {
-
     // Connecting to the Database of Databases
     const db = new Database('./data')
 
-    try {
+    // Creating 1 folder
+    // db.createDatabase('testing-database')
 
-        // Creating 1 folder
-        // db.createDatabase('testing-database')
+    // Creating 100 folders
+    // for (let i = 0; i < 100; i++) {
+    //     db.createDatabase('database' + i)
+    //     console.log('Database created successfully')
+    // }
 
-        // Creating 100 folders
-        // for (let i = 0; i < 100; i++) {
-        //     db.createDatabase('database' + i)
-        //     console.log('Database created successfully')
-        // }
+    db.connect('testing-database')
 
-        // Read all existing folders
-        // const existingDatabases = db.listDatabases()
-        // console.log('Existing databases:', existingDatabases)
+    // Read all existing folders
+    // const existingDatabases = db.readDatabase()
+    // console.log('Existing Collections:', existingDatabases)
 
-        // 
-        // db.renameDatabase('database1', 'newNameDatabase')
-        // console.log('Database renamed')
+    // db.renameDatabase('new-database')
+    // console.log('Database renamed')
 
-        // for (let i = 0; i < existingDatabases.length; i++) {
-        //     db.deleteDatabase(existingDatabases[i])
-        // }
+    // db.deleteDatabase()
 
-        // db.connect("testing-database")
+    // db.forceDeleteDatabase()
 
-        // Creating a Collection
-        // db.createCollection("testing-Collection")
+    // db.connect("testing-database")
 
-        // Reading a Collection
-        // const content = db.readCollection("testing-Collection")
-        // console.log(`File content: ${content}`)
+    // Creating a Collection
+    // db.createCollection("testing-collection")
 
-        // Updating a Collection
-        // db.renameCollection( "testing-Collection",
-        //     "new-renamed-Collection")
+    // Reading a Collection
+    // const content = db.readCollection("testing-collection")
+    // console.log(`File content: ${content}`)
 
-        // Deleting a Collection
-        // db.deleteCollection("empty-Collection")
-        // db.forceDeleteCollection("testing-database", "new-renamed-Collection")
+    // Updating a Collection
+    // db.renameCollection( "testing-collection", "new-collection")
 
+    // Deleting a Collection
+    // db.deleteCollection("new-collection")
+    // db.forceDeleteCollection("testing-database", "new-renamed-collection")
 
-    } catch (error) {
-        console.error('Error:', error.message)
+    // Setting schema
+    const schema1 = {
+        name: {
+            type: 'string',
+            primary: true
+        },
+        email: {
+            type: 'string'
+        }
     }
+
+    // db.setSchema('testing-collection', schema1)
+
+    const object1 = {
+        name: 'Sudhanshu',
+        email: 'abc@gmail.com'
+    }
+
+    const object2 = {
+        name: 'Pandey',
+        email: 'abd@gmail.com'
+    }
+
+    const object3 = {
+        email: 'donot@gmail.com'
+    }
+
+    // Creating a record inside the collection
+    // db.createRecord('testing-collection', object1)
+    // db.createRecord('testing-collection', object2)
+    // console.log("Created Records successfully.")
+
+    // Reading a record inside the collection
+    // console.log(db.readRecord("testing-collection", "Sudhanshu"))
+
+    // Updating a record inside the collection
+    // db.updateRecord("testing-collection", "Sudhanshu", object3)
+
+    // Reading a record inside the collection
+    // console.log(db.readRecord("testing-collection", "Sudhanshu"))
+
+    // console.log(db.readCollection("testing-collection"))
+
+    // console.log(db.deleteRecord("testing-collection", "Sudhanshu"))
+
+    // console.log(db.readCollection("testing-collection"))
 }
 
 testingFunction()
